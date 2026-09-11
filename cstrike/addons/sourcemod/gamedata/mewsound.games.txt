@@ -1,5 +1,29 @@
 "Games"
 {
+    "#default"
+    {
+        "Addresses"
+        {
+            "CGameServer"
+            {
+                "linux"
+                {
+                    "signature" "sv"
+                }
+            }
+        }
+
+        "Signatures"
+        {
+            "sv"
+            {
+                "library" "engine"
+                "linux" "@sv"
+            }
+        }
+
+    }
+
     "cstrike"
     {
         "Addresses"
@@ -36,6 +60,13 @@
                 "linux64" "@_ZN11CGameClient9SendSoundER11SoundInfo_tb"
             }
 
+            "CGameServer::GetSound"
+            {
+                "library" "engine"
+                "linux" "@_ZN11CGameServer8GetSoundEi"
+                "linux64" "@_ZN11CGameServer8GetSoundEi"
+            }
+
             "soundscape_flush"
             {
                 "library" "server"
@@ -69,6 +100,12 @@
             {
                 "linux" "40"
                 "linux64" "44"
+            }
+
+            "SoundInfo_t::nSoundNum"
+            {
+                "linux" "76"
+                "linux64" "80"
             }
 
             "SoundInfo_t::bIsAmbient"

@@ -12,6 +12,7 @@
 #include <mewsound/util>
 #include <mewsound/menu>
 #include <mewsound/cookie>
+#include <mewsound/gamedata>
 
 #pragma newdecls required
 #pragma semicolon 1
@@ -60,6 +61,15 @@ char g_szKnifeSoundsModes[MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_COUNT][MEWSOUND_MEN
 char g_szRadioSoundsModes[MEWSOUND_COOKIE_VALUE_RADIO_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 
+Handle g_hCBaseClient__GetPlayerSlot;
+Handle g_hCGameServer__GetSound;
+
+Address g_pGameServer;
+
+int g_iSoundInfo_t__fVolume;
+int g_iSoundINfo_t__nSoundNum;
+int g_iCGameClient__thing;
+
 public APLRes AskPluginLoad2(Handle self, bool late, char[] error, int err_max)
 {
     g_bLateLoaded = late;
@@ -68,6 +78,8 @@ public APLRes AskPluginLoad2(Handle self, bool late, char[] error, int err_max)
 
 public void OnPluginStart()
 {
+    Mewsound_InitGameData();
+
     Mewsound_CreateGlobals();
     Mewsound_CreateCookies();
     Mewsound_CreateCommands();
@@ -88,6 +100,121 @@ public void OnPluginStart()
             OnClientCookiesCached(client);
         }
     }
+}
+
+static void Mewsound_InitGameData()
+{
+    GameData hGameData = new GameData(MEWSOUND_GAMEDATA_FILENAME);
+    if (hGameData == null)
+    {
+        SetFailState("Failed to load \"%s\" GameData", MEWSOUND_GAMEDATA_FILENAME);
+        return;
+    }
+
+    DynamicDetour hCGameClient__SendAudio = new DynamicDetour(Address_Null, CallConv_THISCALL, ReturnType_Void, ThisPointer_Address);
+    if (hCGameClient__SendAudio == null)
+    {
+        delete hGameData;
+        SetFailState("Failed to create \"%s\" DynamicDetour", MEWSOUND_GAMEDATA_CGAMECLIENT__SENDSOUND);
+        return;
+    }
+    bool bSuccess = hCGameClient__SendAudio.SetFromConf(hGameData, SDKConf_Signature, MEWSOUND_GAMEDATA_CGAMECLIENT__SENDSOUND);
+    if (!bSuccess)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" signature", MEWSOUND_GAMEDATA_CGAMECLIENT__SENDSOUND);
+        return;
+    }
+    hCGameClient__SendAudio.AddParam(HookParamType_ObjectPtr);
+    hCGameClient__SendAudio.AddParam(HookParamType_Bool);
+    bSuccess = hCGameClient__SendAudio.Enable(Hook_Pre, DHook_CGameClient__SendAudio);
+    if (!bSuccess)
+    {
+        delete hGameData;
+        SetFailState("Failed to enable \"%s\" detour", MEWSOUND_GAMEDATA_CGAMECLIENT__SENDSOUND);
+        return;
+    }
+
+    StartPrepSDKCall(SDKCall_Raw);
+    PrepSDKCall_SetFromConf(hGameData, SDKConf_Virtual, MEWSOUND_GAMEDATA_CBASECLIENT__GETPLAYERSLOT);
+    PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+    g_hCBaseClient__GetPlayerSlot = EndPrepSDKCall();
+    if (g_hCBaseClient__GetPlayerSlot == INVALID_HANDLE)
+    {
+        delete hGameData;
+        SetFailState("Failed to initialize \"%s\" call", MEWSOUND_GAMEDATA_CBASECLIENT__GETPLAYERSLOT);
+        return;
+    }
+
+    StartPrepSDKCall(SDKCall_Raw);
+    PrepSDKCall_SetFromConf(hGameData, SDKConf_Signature, MEWSOUND_GAMEDATA_CGAMESERVER__GETSOUND);
+    PrepSDKCall_SetReturnInfo(SDKType_String, SDKPass_Pointer, VDECODE_FLAG_ALLOWNULL);
+    PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+    g_hCGameServer__GetSound = EndPrepSDKCall();
+    if (g_hCGameServer__GetSound == INVALID_HANDLE)
+    {
+        delete hGameData;
+        SetFailState("Failed to initialize \"%s\" call", MEWSOUND_GAMEDATA_CGAMESERVER__GETSOUND);
+        return;
+    }
+
+    g_pGameServer = hGameData.GetAddress(MEWSOUND_GAMEDATA_CGAMESERVER);
+    if (g_pGameServer == Address_Null)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" address", MEWSOUND_GAMEDATA_CGAMESERVER);
+    }
+
+    g_iSoundInfo_t__fVolume = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__FVOLUME);
+    if (g_iSoundInfo_t__fVolume == -1)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" offset", MEWSOUND_GAMEDATA_SOUNDINFO_T__FVOLUME);
+        return;
+    }
+
+    g_iSoundINfo_t__nSoundNum = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__NSOUNDNUM);
+    if (g_iSoundINfo_t__nSoundNum == -1)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" offset", MEWSOUND_GAMEDATA_SOUNDINFO_T__NSOUNDNUM);
+        return;
+    }
+
+    g_iCGameClient__thing = hGameData.GetOffset(MEWSOUND_GAMEDATA_CGAMECLIENT__THING);
+    if (g_iCGameClient__thing == -1)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" offset", MEWSOUND_GAMEDATA_CGAMECLIENT__THING);
+        return;
+    }
+
+    delete hGameData;
+}
+
+public MRESReturn DHook_CGameClient__SendAudio(Address pThis, DHookParam hParams)
+{
+    if (hParams.GetObjectVar(1, g_iSoundInfo_t__fVolume, ObjectValueType_Float) == 0.0)
+    {
+        return MRES_Ignored;
+    }
+
+    Address pClientInterface = pThis + view_as<Address>(g_iCGameClient__thing);
+    int client = view_as<int>(SDKCall(g_hCBaseClient__GetPlayerSlot, pClientInterface)) + 1;
+    PrintToChatAll("CGameClient__SendAudio @ client :: #%i", client);
+    if (!Mewsound_IsClientInGame(client))
+    {
+        return MRES_Ignored;
+    }
+
+    int nSoundNum = hParams.GetObjectVar(1, g_iSoundINfo_t__nSoundNum, ObjectValueType_Int);
+
+    char szSample[PLATFORM_MAX_PATH];
+    SDKCall(g_hCGameServer__GetSound, g_pGameServer, szSample, sizeof(szSample), nSoundNum);
+
+    PrintToChat(client, "SoundInfo_t @ [%i] %s", nSoundNum, szSample);
+
+    return MRES_Ignored;
 }
 
 public void OnClientPutInServer(int client)
