@@ -163,6 +163,7 @@ static void Mewsound_InitGameData()
     {
         delete hGameData;
         SetFailState("Failed to find \"%s\" address", MEWSOUND_GAMEDATA_CGAMESERVER);
+        return;
     }
 
     g_iSoundInfo_t__fVolume = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__FVOLUME);
