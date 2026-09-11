@@ -1,3 +1,93 @@
 "Games"
 {
+    "cstrike"
+    {
+        "Addresses"
+        {
+            "CSoundscapeSystem"
+            {
+                "linux"
+                {
+                    "signature" "soundscape_flush"
+                    "read" "129"
+                }
+
+                "linux64"
+                {
+                    "signature" "soundscape_flush"
+                    "read" "144"
+                }
+            }
+        }
+
+        "Signatures"
+        {
+            "CEnvSoundscape::UpdateForPlayer"
+            {
+                "library" "server"
+                "linux" "@_ZN14CEnvSoundscape15UpdateForPlayerER11ss_update_t"
+                "linux64" "@_ZN14CEnvSoundscape15UpdateForPlayerER11ss_update_t"
+            }
+
+            "CGameClient::SendSound"
+            {
+                "library" "engine"
+                "linux" "@_ZN11CGameClient9SendSoundER11SoundInfo_tb"
+                "linux64" "@_ZN11CGameClient9SendSoundER11SoundInfo_tb"
+            }
+
+            "soundscape_flush"
+            {
+                "library" "server"
+                "linux" "@_ZL16soundscape_flushRK8CCommand"
+                "linux64" "@_ZL16soundscape_flushRK8CCommand"
+            }
+
+            "CStringRegistry::GetStringID"
+            {
+                "library" "server"
+                "linux" "@_ZN15CStringRegistry11GetStringIDEPKc"
+                "linux64" "@_ZN15CStringRegistry11GetStringIDEPKc"
+            }
+        }
+
+        "Offsets"
+        {
+            "CBaseClient::GetPlayerSlot"
+            {
+                "linux" "15"
+                "linux64" "24"
+            }
+
+            "CSoundscapeSystem::m_soundscapes"
+            {
+                "linux" "12"
+                "linux64" "24"
+            }
+
+            "SoundInfo_t::fVolume"
+            {
+                "linux" "40"
+                "linux64" "44"
+            }
+
+            "SoundInfo_t::bIsAmbient"
+            {
+                "linux" "85"
+                "linux64" "89"
+            }
+
+            "ss_update_t::pCurrentSoundscape"
+            {
+                "linux" "4"
+                "linux64" "8"
+            }
+
+            "CGameClient::thing"
+            {
+                "linux" "4"
+                "linux64" "8"
+            }
+        }
+    }
 }
