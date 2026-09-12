@@ -13,6 +13,7 @@
 #include <mewsound/menu>
 #include <mewsound/cookie>
 #include <mewsound/gamedata>
+#include <mewsound/prop>
 
 #pragma newdecls required
 #pragma semicolon 1
@@ -36,8 +37,12 @@ Cookie g_ckAmbientSounds;
 Cookie g_ckTriggerSounds;
 Cookie g_ckNormalSounds;
 Cookie g_ckHurtSounds;
-Cookie g_ckWeaponSounds;
+Cookie g_ckGunshotSounds;
+Cookie g_ckZoomSounds;
 Cookie g_ckKnifeSounds;
+Cookie g_ckGrenadeSounds;
+Cookie g_ckExplodeSounds;
+Cookie g_ckItemSounds;
 Cookie g_ckRadioSounds;
 Cookie g_ckRadioMessages;
 
@@ -46,8 +51,12 @@ int g_iAmbientSounds[MAXPLAYERS + 1];
 int g_iTriggerSounds[MAXPLAYERS + 1];
 int g_iNormalSounds[MAXPLAYERS + 1];
 int g_iHurtSounds[MAXPLAYERS + 1];
-int g_iWeaponSounds[MAXPLAYERS + 1];
+int g_iGunshotSounds[MAXPLAYERS + 1];
+int g_iZoomSounds[MAXPLAYERS + 1];
 int g_iKnifeSounds[MAXPLAYERS + 1];
+int g_iGrenadeSounds[MAXPLAYERS + 1];
+int g_iExplodeSounds[MAXPLAYERS + 1];
+int g_iItemSounds[MAXPLAYERS + 1];
 int g_iRadioSounds[MAXPLAYERS + 1];
 int g_iRadioMessages[MAXPLAYERS + 1];
 
@@ -56,8 +65,12 @@ char g_szAmbientSoundsModes[MEWSOUND_COOKIE_VALUE_AMBIENT_SOUNDS_COUNT][MEWSOUND
 char g_szTriggerSoundsModes[MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szNormalSoundsModes[MEWSOUND_COOKIE_VALUE_NORMAL_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szHurtSoundsModes[MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
-char g_szWeaponSoundsModes[MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
+char g_szGunshotSoundsModes[MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
+char g_szZoomSoundsModes[MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szKnifeSoundsModes[MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
+char g_szGrenadeSoundsModes[MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
+char g_szExplodeSoundsModes[MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
+char g_szItemSoundsModes[MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szRadioSoundsModes[MEWSOUND_COOKIE_VALUE_RADIO_SOUNDS_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 char g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_COUNT][MEWSOUND_MENU_ITEM_SIZE];
 
@@ -66,6 +79,7 @@ Handle g_hCGameServer__GetSound;
 
 Address g_pGameServer;
 
+int g_iSoundInfo_t__nEntityIndex;
 int g_iSoundInfo_t__fVolume;
 int g_iSoundInfo_t__nSoundNum;
 int g_iCGameClient__thing;
@@ -166,6 +180,13 @@ static void Mewsound_InitGameData()
         return;
     }
 
+    g_iSoundInfo_t__nEntityIndex = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__NENTITYINDEX);
+    if (g_iSoundInfo_t__nEntityIndex == -1)
+    {
+        delete hGameData;
+        SetFailState("Failed to find \"%s\" offset", MEWSOUND_GAMEDATA_SOUNDINFO_T__NENTITYINDEX);
+    }
+
     g_iSoundInfo_t__fVolume = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__FVOLUME);
     if (g_iSoundInfo_t__fVolume == -1)
     {
@@ -208,12 +229,71 @@ public MRESReturn DHook_CGameClient__SendAudio(Address pThis, DHookParam hParams
         return MRES_Ignored;
     }
 
+    int nEntityIndex = hParams.GetObjectVar(1, g_iSoundInfo_t__nEntityIndex, ObjectValueType_Int);
+    if (nEntityIndex != 0 && !IsValidEntity(nEntityIndex))
+    {
+        return MRES_Supercede;
+    }
+
     int nSoundNum = hParams.GetObjectVar(1, g_iSoundInfo_t__nSoundNum, ObjectValueType_Int);
 
     char szSample[PLATFORM_MAX_PATH];
     SDKCall(g_hCGameServer__GetSound, g_pGameServer, szSample, sizeof(szSample), nSoundNum);
 
-    PrintToChat(client, "SoundInfo_t @ [%i] %s", nSoundNum, szSample);
+    PrintToChat(client, "SoundInfo_t @ #%i [%i] %s", nEntityIndex, nSoundNum, szSample);
+
+    if (Mewsound_IsGrenadeSound(szSample))
+    {
+        return Mewsound_RetGrenadeSound(client, nEntityIndex);
+    }
+
+    return MRES_Ignored;
+}
+
+static bool Mewsound_IsGrenadeSound(char sample[PLATFORM_MAX_PATH])
+{
+    return StrContains(sample, "weapons/flashbang/grenade_hit1", false) == 0
+        || StrContains(sample, "weapons/hegrenade/he_bounce-1", false) == 0
+        || StrContains(sample, "weapons/smokegrenade/grenade_hit1", false) == 0;
+}
+
+static MRESReturn Mewsound_RetGrenadeSound(int client, int entity)
+{
+    if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_ENABLED)
+    {
+        return MRES_Ignored;
+    }
+    if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_REMOVED)
+    {
+        return MRES_Supercede;
+    }
+
+    int owner = GetEntPropEnt(entity, Prop_Data, MEWSOUND_PROP_M_HOWNERENTITY);
+    if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_MUTED)
+    {
+        if (owner == client)
+        {
+            return MRES_Ignored;
+        }
+        return MRES_Supercede;
+    }
+    if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_PARTNERSHIP)
+    {
+        if (owner == client)
+        {
+            return MRES_Ignored;
+        }
+
+        int partner = Mewsound_GetPartner(client);
+        if (partner == _MEWSOUND_PARTNER_UNKNOWN)
+        {
+            return MRES_Ignored;
+        }
+        if (owner == partner)
+        {
+            return MRES_Ignored;
+        }
+    }
 
     return MRES_Ignored;
 }
@@ -269,39 +349,55 @@ static void Menu_Sound(int client, int position)
 
     // Soundscapes
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_SOUNDSCAPES_FMT, g_szSoundscapesModes[g_iSoundscapes[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_SOUNDSCAPES, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_SOUNDSCAPES, szItem);
 
     // Ambient Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_AMBIENT_SOUNDS_FMT, g_szAmbientSoundsModes[g_iAmbientSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_AMBIENT_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_AMBIENT_SOUNDS, szItem);
 
     // Trigger Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_TRIGGER_SOUNDS_FMT, g_szTriggerSoundsModes[g_iTriggerSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_TRIGGER_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_TRIGGER_SOUNDS, szItem);
 
     // Normal Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_NORMAL_SOUNDS_FMT, g_szNormalSoundsModes[g_iNormalSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_NORMAL_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_NORMAL_SOUNDS, szItem);
 
     // Hurt Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_HURT_SOUNDS_FMT, g_szHurtSoundsModes[g_iHurtSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_HURT_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_HURT_SOUNDS, szItem);
 
-    // Weapon Sounds
-    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_WEAPON_SOUNDS_FMT, g_szWeaponSoundsModes[g_iWeaponSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_WEAPON_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    // Gunshot Sounds
+    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_GUNSHOT_SOUNDS_FMT, g_szGunshotSoundsModes[g_iGunshotSounds[client]]);
+    menu.AddItem(MEWSOUND_MENU_SELECT_GUNSHOT_SOUNDS, szItem);
+
+    // Zoom Sounds
+    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_ZOOM_SOUNDS_FMT, g_szZoomSoundsModes[g_iZoomSounds[client]]);
+    menu.AddItem(MEWSOUND_MENU_SELECT_ZOOM_SOUNDS, szItem);
 
     // Knife Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_KNIFE_SOUNDS_FMT, g_szKnifeSoundsModes[g_iKnifeSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_KNIFE_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_KNIFE_SOUNDS, szItem);
+
+    // Grenade Sounds
+    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_GRENADE_SOUNDS_FMT, g_szGrenadeSoundsModes[g_iGrenadeSounds[client]]);
+    menu.AddItem(MEWSOUND_MENU_SELECT_GRENADE_SOUNDS, szItem);
+
+    // Explode Sounds
+    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_EXPLODE_SOUNDS_FMT, g_szExplodeSoundsModes[g_iExplodeSounds[client]]);
+    menu.AddItem(MEWSOUND_MENU_SELECT_EXPLODE_SOUNDS, szItem);
+
+    // Item Sounds
+    FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_ITEM_SOUNDS_FMT, g_szItemSoundsModes[g_iItemSounds[client]]);
+    menu.AddItem(MEWSOUND_MENU_SELECT_ITEM_SOUNDS, szItem);
 
     // Radio Sounds
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_RADIO_SOUNDS_FMT, g_szRadioSoundsModes[g_iRadioSounds[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_RADIO_SOUNDS, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_RADIO_SOUNDS, szItem);
 
     // Radio Messages
     FormatEx(szItem, sizeof(szItem), MEWSOUND_MENU_ITEM_RADIO_MESSAGES_FMT, g_szRadioMessagesModes[g_iRadioMessages[client]]);
-    menu.AddItem(MEWSOUND_MENU_SELECT_RADIO_MESSAGES, szItem, ITEMDRAW_DISABLED);
+    menu.AddItem(MEWSOUND_MENU_SELECT_RADIO_MESSAGES, szItem);
 
     menu.ExitBackButton = false;
     menu.ExitButton = true;
@@ -351,13 +447,29 @@ static void MenuHandler_Sound(Menu menu, MenuAction action, int client, int inde
     {
         MenuSelect_HurtSounds(client);
     }
-    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_WEAPON_SOUNDS))
+    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_GUNSHOT_SOUNDS))
     {
-        MenuSelect_WeaponSounds(client);
+        MenuSelect_GunshotSounds(client);
+    }
+    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_ZOOM_SOUNDS))
+    {
+        MenuSelect_ZoomSounds(client);
     }
     else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_KNIFE_SOUNDS))
     {
         MenuSelect_KnifeSounds(client);
+    }
+    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_GRENADE_SOUNDS))
+    {
+        MenuSelect_GrenadeSounds(client);
+    }
+    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_EXPLODE_SOUNDS))
+    {
+        MenuSelect_ExplodeSounds(client);
+    }
+    else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_ITEM_SOUNDS))
+    {
+        MenuSelect_ItemSounds(client);
     }
     else if (StrEqual(szInfo, MEWSOUND_MENU_SELECT_RADIO_SOUNDS))
     {
@@ -396,14 +508,34 @@ static void MenuSelect_HurtSounds(int client)
     Mewsound_CycleCookie(client, g_ckHurtSounds, g_iHurtSounds, MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_COUNT);
 }
 
-static void MenuSelect_WeaponSounds(int client)
+static void MenuSelect_GunshotSounds(int client)
 {
-    Mewsound_CycleCookie(client, g_ckWeaponSounds, g_iWeaponSounds, MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_COUNT);
+    Mewsound_CycleCookie(client, g_ckGunshotSounds, g_iGunshotSounds, MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_COUNT);
+}
+
+static void MenuSelect_ZoomSounds(int client)
+{
+    Mewsound_CycleCookie(client, g_ckZoomSounds, g_iZoomSounds, MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_COUNT);
 }
 
 static void MenuSelect_KnifeSounds(int client)
 {
     Mewsound_CycleCookie(client, g_ckKnifeSounds, g_iKnifeSounds, MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_COUNT);
+}
+
+static void MenuSelect_GrenadeSounds(int client)
+{
+    Mewsound_CycleCookie(client, g_ckGrenadeSounds, g_iGrenadeSounds, MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_COUNT);
+}
+
+static void MenuSelect_ExplodeSounds(int client)
+{
+    Mewsound_CycleCookie(client, g_ckExplodeSounds, g_iExplodeSounds, MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_COUNT);
+}
+
+static void MenuSelect_ItemSounds(int client)
+{
+    Mewsound_CycleCookie(client, g_ckItemSounds, g_iItemSounds, MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_COUNT);
 }
 
 static void MenuSelect_RadioSounds(int client)
@@ -434,8 +566,12 @@ static void Mewsound_InitStateVars(int client)
     g_iNormalSounds[client] = g_ckNormalSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_NORMAL_SOUNDS_DEFAULT);
     g_iTriggerSounds[client] = g_ckTriggerSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_DEFAULT);
     g_iHurtSounds[client] = g_ckHurtSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_DEFAULT);
-    g_iWeaponSounds[client] = g_ckWeaponSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_DEFAULT);
+    g_iGunshotSounds[client] = g_ckGunshotSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_DEFAULT);
+    g_iZoomSounds[client] = g_ckZoomSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_DEFAULT);
     g_iKnifeSounds[client] = g_ckKnifeSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_DEFAULT);
+    g_iGrenadeSounds[client] = g_ckGrenadeSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_DEFAULT);
+    g_iExplodeSounds[client] = g_ckExplodeSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_DEFAULT);
+    g_iItemSounds[client] = g_ckItemSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_DEFAULT);
     g_iRadioSounds[client] = g_ckRadioSounds.GetInt(client, MEWSOUND_COOKIE_VALUE_RADIO_SOUNDS_DEFAULT);
     g_iRadioMessages[client] = g_ckRadioMessages.GetInt(client, MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_DEFAULT);
 }
@@ -452,6 +588,7 @@ static void Mewsound_CreateGlobals()
 
     // Trigger Sounds
     g_szTriggerSoundsModes[MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szTriggerSoundsModes[MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
     g_szTriggerSoundsModes[MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
     g_szTriggerSoundsModes[MEWSOUND_COOKIE_VALUE_TRIGGER_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
 
@@ -462,18 +599,43 @@ static void Mewsound_CreateGlobals()
 
     // Hurt Sounds
     g_szHurtSoundsModes[MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szHurtSoundsModes[MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
     g_szHurtSoundsModes[MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
     g_szHurtSoundsModes[MEWSOUND_COOKIE_VALUE_HURT_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
 
-    // Weapon Sounds
-    g_szWeaponSoundsModes[MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
-    g_szWeaponSoundsModes[MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
-    g_szWeaponSoundsModes[MEWSOUND_COOKIE_VALUE_WEAPON_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
+    // Gunshot Sounds
+    g_szGunshotSoundsModes[MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szGunshotSoundsModes[MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
+    g_szGunshotSoundsModes[MEWSOUND_COOKIE_VALUE_GUNSHOT_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
+
+    // Zoom Sounds
+    g_szZoomSoundsModes[MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szZoomSoundsModes[MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
+    g_szZoomSoundsModes[MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
+    g_szZoomSoundsModes[MEWSOUND_COOKIE_VALUE_ZOOM_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
 
     // Knife Sounds
     g_szKnifeSoundsModes[MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
     g_szKnifeSoundsModes[MEWSOUND_COOKIE_VALUE_KNIFE_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
     g_szKnifeSoundsModes[MEWOSUND_COOKIE_VALUE_KNIFE_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
+
+    // Grenade Sounds
+    g_szGrenadeSoundsModes[MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szGrenadeSoundsModes[MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
+    g_szGrenadeSoundsModes[MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
+    g_szGrenadeSoundsModes[MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
+
+    // Explode Sounds
+    g_szExplodeSoundsModes[MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szExplodeSoundsModes[MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
+    g_szExplodeSoundsModes[MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
+    g_szExplodeSoundsModes[MEWSOUND_COOKIE_VALUE_EXPLODE_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
+
+    // Item Sounds
+    g_szItemSoundsModes[MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
+    g_szItemSoundsModes[MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
+    g_szItemSoundsModes[MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
+    g_szItemSoundsModes[MEWSOUND_COOKIE_VALUE_ITEM_SOUNDS_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
 
     // Radio Sounds
     g_szRadioSoundsModes[MEWSOUND_COOKIE_VALUE_RADIO_SOUNDS_MUTED] = MEWSOUND_MENU_ITEM_MUTED;
@@ -482,6 +644,7 @@ static void Mewsound_CreateGlobals()
 
     // Radio Messages
     g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_DISABLED] = MEWSOUND_MENU_ITEM_DISABLED;
+    g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_REMOVED] = MEWSOUND_MENU_ITEM_REMOVED;
     g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_ENABLED] = MEWSOUND_MENU_ITEM_ENABLED;
     g_szRadioMessagesModes[MEWSOUND_COOKIE_VALUE_RADIO_MESSAGES_PARTNERSHIP] = MEWSOUND_MENU_ITEM_PARTNERSHIP;
 }
@@ -493,8 +656,12 @@ static void Mewsound_CreateCookies()
     g_ckTriggerSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_TRIGGER_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_TRIGGER_SOUNDS, CookieAccess_Protected);
     g_ckNormalSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_NORMAL_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_NORMAL_SOUNDS, CookieAccess_Protected);
     g_ckHurtSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_HURT_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_HURT_SOUNDS, CookieAccess_Protected);
-    g_ckWeaponSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_WEAPON_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_WEAPON_SOUNDS, CookieAccess_Protected);
+    g_ckGunshotSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_GUNSHOT_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_GUNSHOT_SOUNDS, CookieAccess_Protected);
+    g_ckZoomSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_ZOOM_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_ZOOM_SOUNDS, CookieAccess_Protected);
     g_ckKnifeSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_KNIFE_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_KNIFE_SOUNDS, CookieAccess_Protected);
+    g_ckGrenadeSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_GRENADE_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_GRENADE_SOUNDS, CookieAccess_Protected);
+    g_ckExplodeSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_EXPLODE_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_EXPLODE_SOUNDS, CookieAccess_Protected);
+    g_ckItemSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_ITEM_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_ITEM_SOUNDS, CookieAccess_Protected);
     g_ckRadioSounds = RegClientCookie(MEWSOUND_COOKIE_NAME_RADIO_SOUNDS, MEWSOUND_COOKIE_DESCRIPTION_RADIO_SOUNDS, CookieAccess_Protected);
     g_ckRadioMessages = RegClientCookie(MEWSOUND_COOKIE_NAME_RADIO_MESSAGES, MEWSOUND_COOKIE_DESCRIPTION_RADIO_MESSAGES, CookieAccess_Protected);
 }

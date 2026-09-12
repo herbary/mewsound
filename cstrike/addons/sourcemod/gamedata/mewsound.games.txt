@@ -96,6 +96,12 @@
                 "linux64" "24"
             }
 
+            "SoundInfo_t::nEntityIndex"
+            {
+                "linux" "4"
+                "linux64" "4"
+            }
+
             "SoundInfo_t::fVolume"
             {
                 "linux" "40"
