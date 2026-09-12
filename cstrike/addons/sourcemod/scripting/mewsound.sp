@@ -67,7 +67,7 @@ Handle g_hCGameServer__GetSound;
 Address g_pGameServer;
 
 int g_iSoundInfo_t__fVolume;
-int g_iSoundINfo_t__nSoundNum;
+int g_iSoundInfo_t__nSoundNum;
 int g_iCGameClient__thing;
 
 public APLRes AskPluginLoad2(Handle self, bool late, char[] error, int err_max)
@@ -174,8 +174,8 @@ static void Mewsound_InitGameData()
         return;
     }
 
-    g_iSoundINfo_t__nSoundNum = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__NSOUNDNUM);
-    if (g_iSoundINfo_t__nSoundNum == -1)
+    g_iSoundInfo_t__nSoundNum = hGameData.GetOffset(MEWSOUND_GAMEDATA_SOUNDINFO_T__NSOUNDNUM);
+    if (g_iSoundInfo_t__nSoundNum == -1)
     {
         delete hGameData;
         SetFailState("Failed to find \"%s\" offset", MEWSOUND_GAMEDATA_SOUNDINFO_T__NSOUNDNUM);
@@ -208,7 +208,7 @@ public MRESReturn DHook_CGameClient__SendAudio(Address pThis, DHookParam hParams
         return MRES_Ignored;
     }
 
-    int nSoundNum = hParams.GetObjectVar(1, g_iSoundINfo_t__nSoundNum, ObjectValueType_Int);
+    int nSoundNum = hParams.GetObjectVar(1, g_iSoundInfo_t__nSoundNum, ObjectValueType_Int);
 
     char szSample[PLATFORM_MAX_PATH];
     SDKCall(g_hCGameServer__GetSound, g_pGameServer, szSample, sizeof(szSample), nSoundNum);
