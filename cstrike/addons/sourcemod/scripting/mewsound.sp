@@ -268,10 +268,35 @@ static MRESReturn Mewsound_RetGrenadeSound(int client, int entity)
         return MRES_Supercede;
     }
 
-    int owner = GetEntPropEnt(entity, Prop_Data, MEWSOUND_PROP_M_HOWNERENTITY);
+    int owner = -1;
+    if (HasEntProp(entity, Prop_Data, MEWSOUND_PROP_M_HOWNERENTITY))
+    {
+        owner = GetEntPropEnt(entity, Prop_Data, MEWSOUND_PROP_M_HOWNERENTITY);
+    }
+    if (!Mewsound_IsClient(owner))
+    {
+        return MRES_Supercede;
+    }
+
+    int mode = GetEntProp(owner, Prop_Send, MEWSOUND_PROP_M_IOBSERVERMODE);
+    int target = GetEntPropEnt(client, Prop_Send, MEWSOUND_PROP_M_HOBSERVERTARGET);
     if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_MUTED)
     {
-        if (owner == client)
+        if (!Mewsound_IsClientInGame(target))
+        {
+            if (owner == client)
+            {
+                return MRES_Ignored;
+            }
+            return MRES_Supercede;
+        }
+
+        if (mode < 4 || mode > 6)
+        {
+            return MRES_Supercede;
+        }
+
+        if (owner == target)
         {
             return MRES_Ignored;
         }
@@ -279,20 +304,47 @@ static MRESReturn Mewsound_RetGrenadeSound(int client, int entity)
     }
     if (g_iGrenadeSounds[client] == MEWSOUND_COOKIE_VALUE_GRENADE_SOUNDS_PARTNERSHIP)
     {
-        if (owner == client)
+        if (!Mewsound_IsClientInGame(target))
+        {
+            if (owner == client)
+            {
+                return MRES_Ignored;
+            }
+
+            int partner = Mewsound_GetPartner(client);
+            if (partner == _MEWSOUND_PARTNER_UNKNOWN)
+            {
+                return MRES_Supercede;
+            }
+
+            if (owner == partner)
+            {
+                return MRES_Ignored;
+            }
+            return MRES_Supercede;
+        }
+
+        if (mode < 4 || mode > 6)
+        {
+            return MRES_Supercede;
+        }
+
+        if (owner == target)
         {
             return MRES_Ignored;
         }
 
-        int partner = Mewsound_GetPartner(client);
+        int partner = Mewsound_GetPartner(target);
         if (partner == _MEWSOUND_PARTNER_UNKNOWN)
         {
-            return MRES_Ignored;
+            return MRES_Supercede;
         }
+
         if (owner == partner)
         {
             return MRES_Ignored;
         }
+        return MRES_Supercede;
     }
 
     return MRES_Ignored;
